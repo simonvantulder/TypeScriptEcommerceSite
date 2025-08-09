@@ -7,4 +7,4 @@ export default function ProductPage(){
             <h1> Products </h1>
             <ProductsList products={products}/>
         </>
-)}
+)} 
