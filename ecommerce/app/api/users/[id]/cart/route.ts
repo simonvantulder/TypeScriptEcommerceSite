@@ -34,18 +34,35 @@ export async function GET(request:NextRequest, { params }: {params: Params}){
 }
 type CartBody = { 
     productID: string 
-};
+}; 
 
 export async function POST(request: NextRequest, { params }: {params : Params} ){
     const userID = params.id;
     const body: CartBody = await request.json();
     const productID = body.productID;
 
+    //add to cart if cart exists otherwise create new cart with item
     carts[userID] = carts[userID] ? carts[userID].concat(productID) : [productID];
     const cartProducts = carts[userID].map(id => products.find(p => p.id ===id))
 
     return new Response(JSON.stringify(cartProducts), {
         status:201,
+        headers: {
+            'Content-Type' : 'application/json'
+        }
+    })
+}
+export async function DELETE(request: NextRequest, { params }: {params : Params} ){
+    const userID = params.id;
+    const body: CartBody = await request.json();
+    const productID = body.productID;
+
+    //remove from cart if cart exists or return empty cart
+    carts[userID] = carts[userID] ? carts[userID].filter(pid => pid !== productID) : [];
+    const cartProducts = carts[userID].map(id => products.find(p => p.id ===id))
+
+    return new Response(JSON.stringify(cartProducts), {
+        status:202,
         headers: {
             'Content-Type' : 'application/json'
         }
