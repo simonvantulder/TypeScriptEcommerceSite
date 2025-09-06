@@ -1,30 +1,27 @@
-import {NextRequest } from 'next/server';
-import { products } from '@/app/product-data';
+import { NextRequest } from 'next/server';
+import { connectToDb } from '@/app/api/db';
 
-type ShoppingCart = Record<string, string[]>;
-
-const carts: ShoppingCart = {
-    '1': ['123', '234'],
-    '2': ['234', '456'],
-    '3': ['234']
-}
 type Params = {
     id: string;
 }
 
 export async function GET(request:NextRequest, { params }: {params: Params}){
-    const userID = params.id;
-    const productIDs = carts[userID];
+    const { db } = await connectToDb();
 
-    if(productIDs === undefined){
+    const userID = params.id;
+    const userCart = await db.collection('carts').findOne({ userID });
+
+    if (!userCart) {
         return new Response(JSON.stringify([]), {
-            status:200,
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
+        status: 200,
+        headers: {
+            'Content-Type': 'application/json',
+        }
+        });
     }
-    const cartProducts = productIDs.map(id => products.find(p => p.id === id));
+
+    const cartIds = userCart.cartIds;
+    const cartProducts = await db.collection('products').find({ id: { $in: cartIds } }).toArray();
     return new Response(JSON.stringify(cartProducts), {
         status: 200,
         headers: {
@@ -37,13 +34,20 @@ type CartBody = {
 }; 
 
 export async function POST(request: NextRequest, { params }: {params : Params} ){
+    const { db } = await connectToDb();
+
     const userID = params.id;
     const body: CartBody = await request.json();
     const productID = body.productID;
 
     //add to cart if cart exists otherwise create new cart with item
-    carts[userID] = carts[userID] ? carts[userID].concat(productID) : [productID];
-    const cartProducts = carts[userID].map(id => products.find(p => p.id ===id))
+    const updatedCart = await db.collection('carts').findOneAndUpdate(
+        { userID },
+        { $push: { cartIds: productID } },
+        { upsert: true, returnDocument: 'after' },
+    )
+
+    const cartProducts = await db.collection('products').find({ id: { $in: updatedCart.cartIds } }).toArray()
 
     return new Response(JSON.stringify(cartProducts), {
         status:201,
@@ -52,15 +56,32 @@ export async function POST(request: NextRequest, { params }: {params : Params} )
         }
     })
 }
+
+//remove from cart if cart exists or return empty cart
 export async function DELETE(request: NextRequest, { params }: {params : Params} ){
+    const { db } = await connectToDb();
+    
     const userID = params.id;
     const body: CartBody = await request.json();
     const productID = body.productID;
 
-    //remove from cart if cart exists or return empty cart
-    carts[userID] = carts[userID] ? carts[userID].filter(pid => pid !== productID) : [];
-    const cartProducts = carts[userID].map(id => products.find(p => p.id ===id))
+    const updatedCart = await db.collection('carts').findOneAndUpdate(
+        { userID },
+        { $pull: { cartIds: productID } },
+        { returnDocument: 'after' }
+    );
 
+    if (!updatedCart) {
+        return new Response(JSON.stringify([]), {
+        status: 202,
+        headers: {
+            'Content-Type': 'application/json',
+        }
+        })
+    }
+
+    const cartProducts = await db.collection('products').find({ id: { $in: updatedCart.cartIds } }).toArray();
+    
     return new Response(JSON.stringify(cartProducts), {
         status:202,
         headers: {
